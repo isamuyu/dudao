@@ -20,6 +20,11 @@ export class CreateCampaignDto {
   @IsOptional()
   @IsArray({ message: '行动范围格式不正确' })
   bounds?: Bounds;
+
+  /** 检查项配置版本 id（缺省为默认配置"督导员快速检查表"） */
+  @IsOptional()
+  @IsString({ message: '检查项配置必须为字符串' })
+  profileId?: string;
 }
 
 export class PatchCampaignDto {

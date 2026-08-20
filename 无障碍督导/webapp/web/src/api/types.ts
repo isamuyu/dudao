@@ -29,10 +29,22 @@ export interface Campaign {
   orgId: string
   name: string
   regionDesc: string
-  bounds: [[number, number], [number, number]] | null
+  bounds?: [[number, number], [number, number]]
   createdBy: string
   createdAt: string
   status: 'active' | 'done'
+  /** 检查项配置版本 id */
+  profileId?: string
+}
+
+/** 检查项配置版本（meta；详情含 payload 全文，结构见 data/checklib ChecklibPayload） */
+export interface CheckProfile {
+  id: string
+  name: string
+  description: string
+  builtin: boolean
+  createdAt: string
+  payload?: unknown
 }
 
 export type ObjectKind = 'building' | 'road'
@@ -163,6 +175,8 @@ export interface Inspection {
   mainInfo: MainInfo
   instances: InstanceResult[]
   condTriggered?: string[]
+  /** 本次检查采用的检查项配置版本 id */
+  profileId?: string
   checklibVersion: string
   submittedAt: string
 }

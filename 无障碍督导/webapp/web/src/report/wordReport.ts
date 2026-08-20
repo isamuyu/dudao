@@ -14,7 +14,7 @@ import {
 } from 'docx'
 import { fileUrl } from '@/api/client'
 import type { Issue, TaskDetail } from '@/api/types'
-import { buildFacilityRows, facilityName, LEVEL_META, SUBTYPE_MAP } from '@/data/checklib'
+import { buildFacilityRowsFrom, facilityNameFrom, LEVEL_META, SUBTYPE_MAP, type ChecklibPayload } from '@/data/checklib'
 
 /** 仿政府公文样式：标题黑体红色居中 + 红色分隔线；正文宋体小四、首行缩进 */
 const RED = '9C1F1F'
@@ -86,7 +86,8 @@ async function imageParagraphs(ids: string[], caption: string): Promise<Paragrap
 }
 
 /** 生成并下载督导报告 Word 文档（图文并茂，不含任务日志） */
-export async function exportInspectionWord(d: TaskDetail, orgName?: string): Promise<void> {
+export async function exportInspectionWord(d: TaskDetail, orgName?: string, lib?: ChecklibPayload): Promise<void> {
+  const fname = (id: string) => facilityNameFrom(lib, id)
   const { task, point, inspections, issues, contacts } = d
   const st = SUBTYPE_MAP[point.subtypeId]
   const sortedInsps = [...inspections].sort((a, b) => a.submittedAt.localeCompare(b.submittedAt))
@@ -129,7 +130,7 @@ export async function exportInspectionWord(d: TaskDetail, orgName?: string): Pro
   let totalItems = 0
   let totalPass = 0
   for (const [idx, insp] of sortedInsps.entries()) {
-    const rows = buildFacilityRows(point.subtypeId)
+    const rows = buildFacilityRowsFrom(lib, point.subtypeId)
     const rowOf = Object.fromEntries(rows.map(r => [r.facility, r]))
     children.push(h1(`${secNo(idx)}、${sortedInsps.length > 1 ? `第${idx + 1}次` : ''}现场督导情况（${fmt(insp.submittedAt)}）`))
 
@@ -148,7 +149,7 @@ export async function exportInspectionWord(d: TaskDetail, orgName?: string): Pro
           ...(row?.items ?? []),
           ...(ins.customItems ?? []).map(c => ({ key: c.key, aspect: c.aspect, requirement: c.requirement, clause: '督导员现场补充条款' })),
         ]
-        children.push(p(`${facilityName(ins.facility)} 实例${String(ins.no).padStart(2, '0')}${ins.locationDesc ? `（${ins.locationDesc}）` : ''}${row ? `〔${LEVEL_META[row.level].label}〕` : ''}${ins.note ? `：${ins.note}` : ''}`, false))
+        children.push(p(`${fname(ins.facility)} 实例${String(ins.no).padStart(2, '0')}${ins.locationDesc ? `（${ins.locationDesc}）` : ''}${row ? `〔${LEVEL_META[row.level].label}〕` : ''}${ins.note ? `：${ins.note}` : ''}`, false))
         if (allItems.length > 0) {
           children.push(table(
             ['检查点', '标准要求', '条款依据', '实测', '结论'],
@@ -167,12 +168,12 @@ export async function exportInspectionWord(d: TaskDetail, orgName?: string): Pro
             [16, 40, 16, 12, 16],
           ))
         }
-        children.push(...await imageParagraphs(ins.photos ?? [], `图 ${idx + 1}-${ins.no} ${facilityName(ins.facility)}取证照片`))
+        children.push(...await imageParagraphs(ins.photos ?? [], `图 ${idx + 1}-${ins.no} ${fname(ins.facility)}取证照片`))
       }
     }
     if (naIns.length > 0) {
       children.push(h2('（二）本处不涉及的服务设施'))
-      children.push(p(naIns.map(x => `${facilityName(x.facility)}（实例${String(x.no).padStart(2, '0')}${x.locationDesc ? `，${x.locationDesc}` : ''}${x.note ? `，${x.note}` : ''}）`).join('；') + '。上述设施经现场确认本处不涉及，未逐项评测，不作为缺失、不生成问题单。'))
+      children.push(p(naIns.map(x => `${fname(x.facility)}（实例${String(x.no).padStart(2, '0')}${x.locationDesc ? `，${x.locationDesc}` : ''}${x.note ? `，${x.note}` : ''}）`).join('；') + '。上述设施经现场确认本处不涉及，未逐项评测，不作为缺失、不生成问题单。'))
     }
 
     // 缺失设施
@@ -183,7 +184,7 @@ export async function exportInspectionWord(d: TaskDetail, orgName?: string): Pro
       children.push(table(
         ['设施类别', '配置等级', '标准要求', '处理'],
         missing.map(r => [
-          facilityName(r.facility),
+          fname(r.facility),
           LEVEL_META[r.level].label,
           r.typeNote ?? r.items[0]?.requirement ?? '',
           r.level === 'M' ? '必须项缺失，予以立案' : (insp.condTriggered ?? []).includes(r.facility) ? '条件触发，予以立案' : '条件未触发，不予立案',

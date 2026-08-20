@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { uid, type InstanceResult, type MainInfo, type Point, type Task } from '@/store/app'
-import { usePoints, useReleaseTask, useSubmitInspection, useTaskDetail, useTasks } from '@/api/hooks'
-import { buildFacilityRows, facilityName, LEVEL_META, judgeParam, SUBTYPE_MAP, type CheckItem, type FacilityRow } from '@/data/checklib'
+import { usePointLib, usePoints, useReleaseTask, useSubmitInspection, useTaskDetail, useTasks } from '@/api/hooks'
+import { buildFacilityRowsFrom, facilityNameFrom, LEVEL_META, judgeParam, SUBTYPE_MAP, type CheckItem, type FacilityRow } from '@/data/checklib'
 import PhotoPicker from '@/components/PhotoPicker'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -77,7 +77,9 @@ function Inner({ task, point, onExit }: { task: Task; point: Point; onExit: () =
   const releaseTask = useReleaseTask()
   const submitInspection = useSubmitInspection()
   const subtype = SUBTYPE_MAP[point.subtypeId]
-  const facilityRows = useMemo(() => buildFacilityRows(point.subtypeId), [point.subtypeId])
+  const lib = usePointLib(point)   // 点位所属行动选用的检查项配置
+  const facilityRows = useMemo(() => buildFacilityRowsFrom(lib, point.subtypeId), [lib, point.subtypeId])
+  const fname = (id: string) => facilityNameFrom(lib, id)
   const rowOf = useMemo(() => Object.fromEntries(facilityRows.map(r => [r.facility, r])), [facilityRows]) as Record<string, FacilityRow>
 
   const draftKey = `wza-draft-${task.id}`
@@ -135,7 +137,7 @@ function Inner({ task, point, onExit }: { task: Task; point: Point; onExit: () =
   const removeInstance = (id: string) => {
     const target = instances.find(x => x.id === id)
     if (!target) return
-    if (insHasData(target) && !confirm(`「${facilityName(target.facility)} 实例${String(target.no).padStart(2, '0')}」已有填写的核查数据，删除后不可恢复，确认删除？`)) return
+    if (insHasData(target) && !confirm(`「${fname(target.facility)} 实例${String(target.no).padStart(2, '0')}」已有填写的核查数据，删除后不可恢复，确认删除？`)) return
     const next = instances.filter(x => x.id !== id)
     setInstances(next.map(x => {
       if (x.facility !== target.facility) return x
@@ -295,7 +297,7 @@ function Inner({ task, point, onExit }: { task: Task; point: Point; onExit: () =
                           className={`relative rounded-lg border-2 p-2.5 text-left ${n > 0 ? 'border-teal-600 bg-teal-50/60' : row.level === 'M' ? 'border-red-300 border-dashed bg-red-50/30' : 'border-slate-200 bg-white'}`}>
                           <span className={`absolute top-1.5 right-1.5 text-[9px] font-semibold rounded px-1 py-0.5 ${lb.cls}`}>{lb.text}</span>
                           <Icon className={`w-5 h-5 ${n > 0 ? 'text-teal-700' : row.level === 'M' ? 'text-red-400' : 'text-slate-400'}`} />
-                          <p className="font-medium text-xs mt-1 pr-8">{facilityName(row.facility)}</p>
+                          <p className="font-medium text-xs mt-1 pr-8">{fname(row.facility)}</p>
                           <p className="text-[10px] text-slate-400">{n > 0 ? `✓ 已添加 ${n} 处，再点继续` : row.facility === 'other' ? '自定义条款 · 现场录入' : row.condition ? `条件：${row.condition}` : `${row.items.length} 个检查点`}</p>
                         </button>
                       )
@@ -320,7 +322,7 @@ function Inner({ task, point, onExit }: { task: Task; point: Point; onExit: () =
                         : !doneAll ? <span className="w-3.5 h-3.5 rounded-full border inline-block shrink-0" />
                         : fails > 0 ? <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
                         : <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />}
-                      <span className="font-medium text-sm truncate">{facilityName(ins.facility)} {String(ins.no).padStart(2, '0')}{ins.locationDesc ? ` · ${ins.locationDesc}` : ''}</span>
+                      <span className="font-medium text-sm truncate">{fname(ins.facility)} {String(ins.no).padStart(2, '0')}{ins.locationDesc ? ` · ${ins.locationDesc}` : ''}</span>
                       <span className={`text-[10px] shrink-0 ${LEVEL_META[row.level].tone}`}>{LEVEL_META[row.level].symbol}</span>
                       {open ? <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />}
                     </button>
@@ -438,7 +440,7 @@ function Inner({ task, point, onExit }: { task: Task; point: Point; onExit: () =
                       <div key={row.facility} className="border-t pt-2 text-xs space-y-1.5">
                         <p className="font-medium flex items-center gap-1.5">
                           <AlertTriangle className={`w-3.5 h-3.5 ${row.level === 'M' || triggered ? 'text-red-500' : 'text-slate-300'}`} />
-                          缺少{row.level === 'M' ? '必须设置的' : '条件设置的'}{facilityName(row.facility)}
+                          缺少{row.level === 'M' ? '必须设置的' : '条件设置的'}{fname(row.facility)}
                           <Badge variant="secondary" className="text-[10px]">{LEVEL_META[row.level].label}</Badge>
                         </p>
                         <p className="text-slate-500">{row.typeNote ?? row.items[0]?.requirement}（{row.typeClause ?? row.items[0]?.clause}）</p>
@@ -470,7 +472,7 @@ function Inner({ task, point, onExit }: { task: Task; point: Point; onExit: () =
                     <div key={i} className="border-t pt-2 text-xs">
                       <p className="font-medium flex items-center gap-1.5">
                         <XCircle className="w-3.5 h-3.5 text-red-500" />
-                        {facilityName(ins.facility)} · {item.aspect} · 实例{String(ins.no).padStart(2, '0')}{ins.locationDesc ? `（${ins.locationDesc}）` : ''}
+                        {fname(ins.facility)} · {item.aspect} · 实例{String(ins.no).padStart(2, '0')}{ins.locationDesc ? `（${ins.locationDesc}）` : ''}
                       </p>
                       <p className="text-slate-500 mt-0.5">{item.requirement}（{item.clause}）{ins.checks[item.key]?.measured ? `｜实测：${ins.checks[item.key]!.measured}` : ''}</p>
                     </div>

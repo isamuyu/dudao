@@ -64,6 +64,10 @@ export class InspectionEntity {
   @Column('simple-json', { nullable: true })
   condTriggered?: string[];
 
+  /** 本次检查采用的检查项配置版本 id */
+  @Column('text', { nullable: true })
+  profileId?: string;
+
   @Column('text')
   checklibVersion: string;
 

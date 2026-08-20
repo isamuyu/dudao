@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { AuthUser, CurrentUser, Roles } from '../../common/decorators';
-import { CreateUserDto, PatchUserDto } from './dto';
+import { CreateUserDto, PatchUserDto, SelfPatchDto } from './dto';
 
 @Controller('users')
 export class UsersController {
@@ -18,6 +18,12 @@ export class UsersController {
   @Get()
   list(@CurrentUser() user: AuthUser, @Query('orgId') orgId?: string) {
     return this.users.list(user, orgId);
+  }
+
+  /** 用户自助：修改本人姓名/手机号/密码（需先于 :id 路由声明） */
+  @Patch('me')
+  selfPatch(@CurrentUser() user: AuthUser, @Body() dto: SelfPatchDto) {
+    return this.users.selfPatch(user, dto);
   }
 
   @Roles('admin')

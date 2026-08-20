@@ -11,6 +11,7 @@
 - 角色 `role`：`platform_admin`（平台管理员） | `admin`（组织管理员） | `inspector`（督导员）。
 - **租户隔离**：除标注 `platform_admin` 的接口外，所有查询/写入强制限定在 token 携带的 `orgId` 内；跨组织访问返回 404（与不存在一致）。
 - 检查项库版本：`checklibVersion = "1.4"`。
+- **检查项配置版本**：`GET /check-profiles` 列表（meta）、`GET /check-profiles/:id` 详情（含完整 `payload`：设施/矩阵/明细/检查点模板/参数补丁/参数速查）。内置默认配置 `prof-quick`（"督导员快速检查表"）。行动创建时以 `profileId` 选用（缺省默认配置，不存在 422）；现场核查表按行动配置生成，检查记录保存 `profileId` 以便溯源。
 - **分页约定（预留）**：一期列表接口返回组织内全量数据，前端统一客户端分页（组件 `web/src/components/Pager.tsx`）；后续数据量增长时列表接口以 `?page=&pageSize=` 扩展为服务端分页，响应包 `{items, total, page, pageSize}`，前端分页组件接口不变。
 
 ## 1. 认证

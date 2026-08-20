@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { fileUrl } from '@/api/client'
-import { useTaskDetail } from '@/api/hooks'
+import { useCampaigns, useCheckProfile, useTaskDetail } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
 import type { Inspection, TaskLogEntry } from '@/api/types'
 import { ISSUE_STATUS_META, POINT_STATUS_META } from '@/store/app'
-import { buildFacilityRows, facilityName, LEVEL_META, SUBTYPE_MAP } from '@/data/checklib'
+import { buildFacilityRowsFrom, facilityNameFrom, LEVEL_META, SUBTYPE_MAP, type ChecklibPayload } from '@/data/checklib'
 import { exportInspectionWord } from '@/report/wordReport'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -55,8 +55,9 @@ function Timeline({ log }: { log: TaskLogEntry[] }) {
 }
 
 /** 单次检查记录报告 */
-function InspectionReport({ insp, pointSubtype, issues }: { insp: Inspection; pointSubtype: string; issues: { id: string; inspectionId?: string; title: string; status: string; severity: string }[] }) {
-  const rows = useMemo(() => buildFacilityRows(pointSubtype), [pointSubtype])
+function InspectionReport({ insp, pointSubtype, issues, lib }: { insp: Inspection; pointSubtype: string; issues: { id: string; inspectionId?: string; title: string; status: string; severity: string }[]; lib?: ChecklibPayload }) {
+  const fname = (id: string) => facilityNameFrom(lib, id)
+  const rows = useMemo(() => buildFacilityRowsFrom(lib, pointSubtype), [lib, pointSubtype])
   const rowOf = useMemo(() => Object.fromEntries(rows.map(r => [r.facility, r])), [rows])
   const myIssues = issues.filter(i => i.inspectionId === insp.id)
   /** 缺失设施（按检查项库重算）：无实例且 level ≠ R */
@@ -93,7 +94,7 @@ function InspectionReport({ insp, pointSubtype, issues }: { insp: Inspection; po
               return (
                 <div key={ins.id} className="border rounded-md p-2.5 space-y-1.5">
                   <p className="font-medium flex items-center gap-1.5 flex-wrap">
-                    {facilityName(ins.facility)} 实例{String(ins.no).padStart(2, '0')}
+                    {fname(ins.facility)} 实例{String(ins.no).padStart(2, '0')}
                     {row && <Badge variant="secondary" className="text-[10px]">{LEVEL_META[row.level].label}</Badge>}
                     {ins.applicable === false && <Badge variant="outline" className="text-[10px] text-slate-500">本处不涉及</Badge>}
                     {ins.locationDesc && <span className="text-slate-400 font-normal">{ins.locationDesc}</span>}
@@ -141,7 +142,7 @@ function InspectionReport({ insp, pointSubtype, issues }: { insp: Inspection; po
               {missing.map(r => (
                 <li key={r.facility} className="px-2 py-1 flex items-center gap-1.5">
                   <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${r.level === 'M' || cond.has(r.facility) ? 'text-red-500' : 'text-slate-300'}`} />
-                  <span className={`flex-1 ${LEVEL_META[r.level].tone}`}>{LEVEL_META[r.level].symbol} {facilityName(r.facility)}</span>
+                  <span className={`flex-1 ${LEVEL_META[r.level].tone}`}>{LEVEL_META[r.level].symbol} {fname(r.facility)}</span>
                   <span className="text-slate-400">
                     {r.level === 'M' ? '必须项缺失' : cond.has(r.facility) ? '条件触发·已立案' : '条件未触发·未立案'}
                   </span>
@@ -174,13 +175,19 @@ function InspectionReport({ insp, pointSubtype, issues }: { insp: Inspection; po
 export default function TaskReport({ taskId, onBack }: { taskId: string; onBack: () => void }) {
   const { org } = useAuth()
   const { data, isLoading } = useTaskDetail(taskId)
+  const { data: campaigns = [] } = useCampaigns()
+  const profileId = data?.inspections[0]?.profileId
+    ?? campaigns.find(c => c.id === data?.point.campaignId)?.profileId
+    ?? 'prof-quick'
+  const { data: profile } = useCheckProfile(profileId)
+  const lib = profile?.payload as ChecklibPayload | undefined
   const [exporting, setExporting] = useState(false)
 
   const exportWord = async () => {
     if (!data) return
     setExporting(true)
     try {
-      await exportInspectionWord(data, org?.name)
+      await exportInspectionWord(data, org?.name, lib)
       toast.success('督导报告 Word 已导出')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '导出失败')
@@ -232,7 +239,7 @@ export default function TaskReport({ taskId, onBack }: { taskId: string; onBack:
           </p>
         )}
         {sortedInsps.map(insp => (
-          <InspectionReport key={insp.id} insp={insp} pointSubtype={point.subtypeId} issues={issues} />
+          <InspectionReport key={insp.id} insp={insp} pointSubtype={point.subtypeId} issues={issues} lib={lib} />
         ))}
 
         {sortedInsps.some(i => (i.mainInfo.photos?.length ?? 0) === 0 && i.instances.every(x => (x.photos?.length ?? 0) === 0)) && (

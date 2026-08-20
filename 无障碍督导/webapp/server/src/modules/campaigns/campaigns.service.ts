@@ -5,9 +5,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CampaignEntity, OrgEntity } from '../../database/entities';
+import { CampaignEntity, CheckProfileEntity, OrgEntity } from '../../database/entities';
 import { AuthUser } from '../../common/decorators';
 import { inBounds, nowIso, uid } from '../../common/geo';
+import { DEFAULT_PROFILE_ID } from '../checklib/check-profiles.controller';
 import { CreateCampaignDto, PatchCampaignDto } from './dto';
 
 @Injectable()
@@ -17,6 +18,8 @@ export class CampaignsService {
     private readonly campaigns: Repository<CampaignEntity>,
     @InjectRepository(OrgEntity)
     private readonly orgs: Repository<OrgEntity>,
+    @InjectRepository(CheckProfileEntity)
+    private readonly profiles: Repository<CheckProfileEntity>,
   ) {}
 
   list(user: AuthUser) {
@@ -33,6 +36,10 @@ export class CampaignsService {
         throw new UnprocessableEntityException('行动区域超出组织督导区域');
       }
     }
+    // 检查项配置版本：缺省默认配置；指定时须存在
+    const profileId = dto.profileId ?? DEFAULT_PROFILE_ID;
+    const profile = await this.profiles.findOne({ where: { id: profileId } });
+    if (!profile) throw new UnprocessableEntityException('检查项配置不存在');
     const entity = this.campaigns.create({
       id: uid('c'),
       orgId: user.orgId!,
@@ -42,6 +49,7 @@ export class CampaignsService {
       createdBy: user.name,
       createdAt: nowIso(),
       status: 'active',
+      profileId,
     });
     return this.campaigns.save(entity);
   }

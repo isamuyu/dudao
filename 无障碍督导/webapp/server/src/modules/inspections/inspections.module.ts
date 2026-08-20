@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
+  CampaignEntity,
+  CheckProfileEntity,
   InspectionEntity,
   IssueEntity,
   PointEntity,
@@ -16,6 +18,8 @@ import { InspectionsController } from './inspections.controller';
       IssueEntity,
       PointEntity,
       TaskEntity,
+      CampaignEntity,
+      CheckProfileEntity,
     ]),
   ],
   providers: [InspectionsService],

@@ -6,6 +6,7 @@ import { TaskEntity } from './task.entity';
 import { IssueEntity } from './issue.entity';
 import { InspectionEntity } from './inspection.entity';
 import { FileEntity } from './file.entity';
+import { CheckProfileEntity } from './checkprofile.entity';
 
 export const ALL_ENTITIES = [
   OrgEntity,
@@ -16,6 +17,7 @@ export const ALL_ENTITIES = [
   IssueEntity,
   InspectionEntity,
   FileEntity,
+  CheckProfileEntity,
 ];
 
 export {
@@ -27,6 +29,7 @@ export {
   IssueEntity,
   InspectionEntity,
   FileEntity,
+  CheckProfileEntity,
 };
 
 export { toPublicUser } from './user.entity';

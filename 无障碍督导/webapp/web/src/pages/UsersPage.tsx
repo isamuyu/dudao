@@ -42,6 +42,16 @@ export default function UsersPage() {
     }
   }
 
+  const resetPassword = async (id: string, name: string) => {
+    if (!confirm(`将 ${name} 的密码重置为 123456？`)) return
+    try {
+      await updateUser.mutateAsync({ id, password: '123456' })
+      toast.success('密码已重置为 123456')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '操作失败')
+    }
+  }
+
   return (
     <div className="h-full overflow-auto bg-slate-50">
       <div className="max-w-4xl mx-auto p-6 space-y-4">
@@ -92,11 +102,14 @@ export default function UsersPage() {
                         ? <span className="text-xs text-green-600">启用中</span>
                         : <span className="text-xs text-slate-400">已停用</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td className="px-4 py-2.5 text-right space-x-1.5">
                       {u.id !== me?.id && (
-                        u.status === 'active'
-                          ? <Button size="sm" variant="outline" className="h-7 text-xs" disabled={updateUser.isPending} onClick={() => void toggle(u.id, 'disabled')}>停用</Button>
-                          : <Button size="sm" variant="outline" className="h-7 text-xs" disabled={updateUser.isPending} onClick={() => void toggle(u.id, 'active')}>启用</Button>
+                        <>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" disabled={updateUser.isPending} onClick={() => void resetPassword(u.id, u.name)}>重置密码</Button>
+                          {u.status === 'active'
+                            ? <Button size="sm" variant="outline" className="h-7 text-xs" disabled={updateUser.isPending} onClick={() => void toggle(u.id, 'disabled')}>停用</Button>
+                            : <Button size="sm" variant="outline" className="h-7 text-xs" disabled={updateUser.isPending} onClick={() => void toggle(u.id, 'active')}>启用</Button>}
+                        </>
                       )}
                     </td>
                   </tr>

@@ -3,6 +3,7 @@ import { useAuth } from '@/auth/AuthContext'
 import MobileTasks from './MobileTasks'
 import MobileInspect from './MobileInspect'
 import TaskReport from '@/components/TaskReport'
+import ProfileDialog from '@/components/ProfileDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -23,6 +24,7 @@ export default function MobileShell() {
   const [tab, setTab] = useState<'tasks' | 'me'>('tasks')
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [reportTaskId, setReportTaskId] = useState<string | null>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
   if (!user) return null
   const rm = ROLE_META[user.role]
 
@@ -57,6 +59,9 @@ export default function MobileShell() {
                     <p className="text-xs text-slate-400">移动版当前支持：任务领取 / GPS 签到 / 现场核查 / 提交归档。地图点位、问题闭环、统计分析等请使用电脑版。</p>
                   </CardContent>
                 </Card>
+                <Button variant="outline" className="w-full h-10" onClick={() => setProfileOpen(true)}>
+                  <UserRound className="w-4 h-4 mr-1" />个人中心（修改资料 / 密码）
+                </Button>
                 <Button variant="outline" className="w-full h-10" onClick={() => { window.location.hash = '#/pc' }}>
                   <MonitorSmartphone className="w-4 h-4 mr-1" />切换到电脑版
                 </Button>
@@ -80,6 +85,7 @@ export default function MobileShell() {
           </button>
         </nav>
       )}
+      <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   )
 }

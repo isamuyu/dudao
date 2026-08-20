@@ -55,3 +55,23 @@ export class PatchUserDto {
   @MinLength(6)
   password?: string;
 }
+
+/** 用户自助修改（本人）：姓名 / 手机号 / 密码（改密码需校验旧密码） */
+export class SelfPatchDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  oldPassword?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  newPassword?: string;
+}

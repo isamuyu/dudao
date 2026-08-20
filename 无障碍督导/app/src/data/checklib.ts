@@ -618,14 +618,55 @@ export interface CheckItem {
   param?: ParamSpec
 }
 
-/** 生成某建筑具体分类的现场核查表：配置矩阵决定设施范围，检查点模板覆盖全部技术参数，类型明细差异化 */
-export function buildChecklist(subtypeId: string): CheckItem[] {
-  const levels = MATRIX[subtypeId] || []
+/** ===== 检查项库配置化：一份"配置版本"的完整载荷 ===== */
+export interface ChecklibPayload {
+  facilities: FacilityCategory[]
+  generic: Record<string, FacilityGeneric>
+  groups: BuildingGroup[]
+  subtypes: BuildingSubtype[]
+  matrix: Record<string, Level[]>
+  details: DetailNote[]
+  aspects: Record<string, AspectTemplate[]>
+  extras: Record<string, { name: string; short: string }>
+  extraLevels: Record<string, Record<string, 'M' | 'C' | 'R'>>
+  paramPatch: Record<string, Record<string, ParamSpec>>
+  signageLevels: Record<string, 'M' | 'C' | 'R'>
+  paramTable: { facility: string; param: string; value: string; clause: string }[]
+}
+
+/** 内置默认配置（"督导员快速检查表"的内容快照） */
+export function defaultLibPayload(): ChecklibPayload {
+  return {
+    facilities: FACILITIES,
+    generic: FACILITY_GENERIC,
+    groups: BUILDING_GROUPS,
+    subtypes: BUILDING_SUBTYPES,
+    matrix: MATRIX,
+    details: DETAILS,
+    aspects: FACILITY_ASPECTS,
+    extras: EXTRA_FACILITIES,
+    extraLevels: EXTRA_LEVELS,
+    paramPatch: PARAM_PATCH,
+    signageLevels: Object.fromEntries(BUILDING_SUBTYPES.map(s => [s.id, signageLevel(s.id)])),
+    paramTable: PARAM_TABLE,
+  }
+}
+
+/** 按配置取设施名称（缺省用内置库） */
+export function facilityNameFrom(lib: ChecklibPayload | undefined, id: string): string {
+  if (!lib) return facilityName(id)
+  return lib.facilities.find(f => f.id === id)?.name ?? lib.extras[id]?.name ?? id
+}
+
+/** 按配置生成某建筑具体分类的现场核查表 */
+export function buildChecklistFrom(lib: ChecklibPayload | undefined, subtypeId: string): CheckItem[] {
+  const L = lib ?? defaultLibPayload()
+  const levels = L.matrix[subtypeId] || []
   const items: CheckItem[] = []
   const push = (facility: string, level: Exclude<Level, 'NA'>, cond?: string) => {
-    const detail = DETAILS.find(c => c.subtype === subtypeId && c.facility === facility)
-    const patch = PARAM_PATCH[`${subtypeId}:${facility}`] ?? {}
-    const aspects = FACILITY_ASPECTS[facility] ?? []
+    const detail = L.details.find(c => c.subtype === subtypeId && c.facility === facility)
+    const patch = L.paramPatch[`${subtypeId}:${facility}`] ?? {}
+    const aspects = L.aspects[facility] ?? []
     aspects.forEach((a, idx) => {
       items.push({
         key: `${facility}#${idx}`,
@@ -637,13 +678,13 @@ export function buildChecklist(subtypeId: string): CheckItem[] {
       })
     })
   }
-  FACILITIES.forEach((fac, i) => {
+  L.facilities.forEach((fac, i) => {
     const level = levels[i]
     if (!level || level === 'NA') return
-    push(fac.id, level, level === 'C' ? FACILITY_GENERIC[fac.id]?.condition : undefined)
+    push(fac.id, level, level === 'C' ? L.generic[fac.id]?.condition : undefined)
   })
-  push('signage', signageLevel(subtypeId))
-  Object.entries(EXTRA_LEVELS).forEach(([fac, m]) => {
+  push('signage', L.signageLevels[subtypeId] ?? 'C')
+  Object.entries(L.extraLevels).forEach(([fac, m]) => {
     const lv = m[subtypeId]
     if (lv) push(fac, lv)
   })
@@ -652,6 +693,11 @@ export function buildChecklist(subtypeId: string): CheckItem[] {
   // 排序：必须 > 条件 > 推荐；同级保持设施顺序
   const rank = (l: string) => (l === 'M' ? 0 : l === 'C' ? 1 : 2)
   return items.sort((a, b) => rank(a.level) - rank(b.level))
+}
+
+/** 生成某建筑具体分类的现场核查表（内置库） */
+export function buildChecklist(subtypeId: string): CheckItem[] {
+  return buildChecklistFrom(undefined, subtypeId)
 }
 
 /** 按设施聚合（第2步设施实例配置用） */
@@ -663,8 +709,9 @@ export interface FacilityRow {
   condition?: string
   items: CheckItem[]
 }
-export function buildFacilityRows(subtypeId: string): FacilityRow[] {
-  const items = buildChecklist(subtypeId)
+/** 按设施聚合（第2步设施实例配置用），支持指定配置版本 */
+export function buildFacilityRowsFrom(lib: ChecklibPayload | undefined, subtypeId: string): FacilityRow[] {
+  const items = buildChecklistFrom(lib, subtypeId)
   const rows: FacilityRow[] = []
   items.forEach(it => {
     let r = rows.find(x => x.facility === it.facility)
@@ -679,6 +726,9 @@ export function buildFacilityRows(subtypeId: string): FacilityRow[] {
     rows.push({ facility: 'other', level: 'R', items: [] })
   }
   return rows
+}
+export function buildFacilityRows(subtypeId: string): FacilityRow[] {
+  return buildFacilityRowsFrom(undefined, subtypeId)
 }
 
 /** 参数速查表（清单"三、关键技术参数速查表"全量覆盖） */

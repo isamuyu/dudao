@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { uid, distM, type InstanceResult, type MainInfo, type Point, type Task } from '@/store/app'
 import { useAuth } from '@/auth/AuthContext'
-import { usePoints, useReleaseTask, useSubmitInspection, useTaskDetail, useTasks } from '@/api/hooks'
-import { buildFacilityRows, facilityName, LEVEL_META, judgeParam, SUBTYPE_MAP, type CheckItem, type FacilityRow } from '@/data/checklib'
+import { usePointLib, usePoints, useReleaseTask, useSubmitInspection, useTaskDetail, useTasks } from '@/api/hooks'
+import { buildFacilityRowsFrom, facilityNameFrom, LEVEL_META, judgeParam, SUBTYPE_MAP, type CheckItem, type FacilityRow } from '@/data/checklib'
 import PhotoPicker from '@/components/PhotoPicker'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -95,7 +95,9 @@ function InspectInner({ task, point, onExit }: { task: Task; point: Point; onExi
   const releaseTask = useReleaseTask()
   const submitInspection = useSubmitInspection()
   const subtype = SUBTYPE_MAP[point.subtypeId]
-  const facilityRows = useMemo(() => buildFacilityRows(point.subtypeId), [point.subtypeId])
+  const lib = usePointLib(point)   // 点位所属行动选用的检查项配置
+  const facilityRows = useMemo(() => buildFacilityRowsFrom(lib, point.subtypeId), [lib, point.subtypeId])
+  const fname = (id: string) => facilityNameFrom(lib, id)
   const rowOf = useMemo(() => Object.fromEntries(facilityRows.map(r => [r.facility, r])), [facilityRows])
 
   const draftKey = `wza-draft-${task.id}`
@@ -166,7 +168,7 @@ function InspectInner({ task, point, onExit }: { task: Task; point: Point; onExi
   const removeInstance = (id: string) => {
     const target = instances.find(x => x.id === id)
     if (!target) return
-    if (insHasData(target) && !confirm(`「${facilityName(target.facility)} 实例${String(target.no).padStart(2, '0')}」已有填写的核查数据，删除后不可恢复，确认删除？`)) return
+    if (insHasData(target) && !confirm(`「${fname(target.facility)} 实例${String(target.no).padStart(2, '0')}」已有填写的核查数据，删除后不可恢复，确认删除？`)) return
     const next = instances.filter(x => x.id !== id)
     // 同设施实例重新顺序编号
     const renumbered = next.map(x => {
@@ -258,16 +260,16 @@ function InspectInner({ task, point, onExit }: { task: Task; point: Point; onExi
     return allItemsOf(ins, row).map(item => ({ ins, item, res: ins.checks[item.key] }))
   })
   const exportJSON = () => {
-    const data = { point: { name: point.name, address: point.address, subtype: subtype?.name, lat: point.lat, lng: point.lng }, mainInfo: main, instances, missingFacilities: missing.map(m => facilityName(m.row.facility)), exportedAt: new Date().toISOString() }
+    const data = { point: { name: point.name, address: point.address, subtype: subtype?.name, lat: point.lat, lng: point.lng }, mainInfo: main, instances, missingFacilities: missing.map(m => fname(m.row.facility)), exportedAt: new Date().toISOString() }
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
     a.download = `${point.name}-核验数据.json`; a.click()
   }
   const exportCSV = () => {
     const rows = [['设施类别', '实例编号', '位置描述', '检查点', '配置等级', '标准要求', '条款依据', '实测值', '适用', '结论', '备注']]
-    missing.forEach(({ row }) => rows.push([facilityName(row.facility), '-', '-', '（整项缺失）', LEVEL_META[row.level].label, row.typeNote ?? row.items[0]?.requirement ?? '', row.typeClause ?? '', '', '-', row.level === 'M' ? '不符合-必须项缺失' : condTriggered.includes(row.facility) ? '不符合-条件触发但未设置' : '条件未触发-不立案', '']))
+    missing.forEach(({ row }) => rows.push([fname(row.facility), '-', '-', '（整项缺失）', LEVEL_META[row.level].label, row.typeNote ?? row.items[0]?.requirement ?? '', row.typeClause ?? '', '', '-', row.level === 'M' ? '不符合-必须项缺失' : condTriggered.includes(row.facility) ? '不符合-条件触发但未设置' : '条件未触发-不立案', '']))
     aspectRows().forEach(({ ins, item, res }) => {
-      rows.push([facilityName(ins.facility), String(ins.no), ins.locationDesc, item.aspect, LEVEL_META[item.level].label, item.requirement, item.clause, res?.measured ?? '', ins.applicable === false ? '不适用' : '适用', ins.applicable === false ? '—' : res?.verdict === 'pass' ? '符合' : res?.verdict === 'fail' ? '不符合' : '未核查', ins.note ?? ''])
+      rows.push([fname(ins.facility), String(ins.no), ins.locationDesc, item.aspect, LEVEL_META[item.level].label, item.requirement, item.clause, res?.measured ?? '', ins.applicable === false ? '不适用' : '适用', ins.applicable === false ? '—' : res?.verdict === 'pass' ? '符合' : res?.verdict === 'fail' ? '不符合' : '未核查', ins.note ?? ''])
     })
     const csv = '﻿' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const a = document.createElement('a')
@@ -278,9 +280,9 @@ function InspectInner({ task, point, onExit }: { task: Task; point: Point; onExi
     const w = window.open('', '_blank')!
     const rows = aspectRows().map(({ ins, item, res }) => {
       const r = ins.applicable === false ? '不适用' : res?.verdict === 'pass' ? '✓ 符合' : res?.verdict === 'fail' ? '✗ 不符合' : '未核查'
-      return `<tr><td>${facilityName(ins.facility)}</td><td>${ins.no}</td><td>${ins.locationDesc}</td><td>${item.aspect}</td><td style="font-size:11px">${item.requirement}</td><td>${item.clause}</td><td>${res?.measured ?? ''}</td><td>${r}</td></tr>`
+      return `<tr><td>${fname(ins.facility)}</td><td>${ins.no}</td><td>${ins.locationDesc}</td><td>${item.aspect}</td><td style="font-size:11px">${item.requirement}</td><td>${item.clause}</td><td>${res?.measured ?? ''}</td><td>${r}</td></tr>`
     }).join('')
-    const missingRows = missing.map(({ row }) => `<tr style="background:${row.level === 'M' || condTriggered.includes(row.facility) ? '#fee2e2' : '#f1f5f9'}"><td>${facilityName(row.facility)}</td><td>-</td><td>-</td><td>整项缺失</td><td style="font-size:11px">${row.typeNote ?? row.items[0]?.requirement ?? ''}</td><td>${row.typeClause ?? ''}</td><td></td><td>${row.level === 'M' ? '✗ 必须项缺失' : condTriggered.includes(row.facility) ? '✗ 条件触发但未设置' : '— 条件未触发（不立案）'}</td></tr>`).join('')
+    const missingRows = missing.map(({ row }) => `<tr style="background:${row.level === 'M' || condTriggered.includes(row.facility) ? '#fee2e2' : '#f1f5f9'}"><td>${fname(row.facility)}</td><td>-</td><td>-</td><td>整项缺失</td><td style="font-size:11px">${row.typeNote ?? row.items[0]?.requirement ?? ''}</td><td>${row.typeClause ?? ''}</td><td></td><td>${row.level === 'M' ? '✗ 必须项缺失' : condTriggered.includes(row.facility) ? '✗ 条件触发但未设置' : '— 条件未触发（不立案）'}</td></tr>`).join('')
     w.document.write(`<html><head><meta charset="utf-8"><title>无障碍设施核验结果表</title><style>body{font-family:sans-serif;padding:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #999;padding:6px;font-size:12px}h1{font-size:18px}</style></head><body>
       <h1>无障碍设施核验结果表</h1>
       <p>点位：${point.name}（${subtype?.name}）&emsp;地址：${point.address}&emsp;GPS：${point.lat}, ${point.lng}&emsp;检查人：${user?.name}&emsp;时间：${new Date().toLocaleString('zh-CN')}</p>
@@ -386,7 +388,7 @@ function InspectInner({ task, point, onExit }: { task: Task; point: Point; onExi
                       className={`w-full rounded px-2 py-1.5 flex items-center gap-1.5 text-xs ${i === cur && !showPicker ? 'bg-teal-700 text-white' : 'hover:bg-slate-100'}`}>
                       <button className="flex-1 min-w-0 text-left flex items-center gap-1.5" onClick={() => { setCur(i); setAdding(false) }}>
                         {x.applicable === false ? '—' : !isAnswered(x) ? <span className="w-3.5 h-3.5 rounded-full border inline-block shrink-0" /> : fails > 0 ? <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" /> : <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />}
-                        <span className="truncate">{facilityName(x.facility)} {String(x.no).padStart(2, '0')}{x.locationDesc ? ` · ${x.locationDesc}` : ''}</span>
+                        <span className="truncate">{fname(x.facility)} {String(x.no).padStart(2, '0')}{x.locationDesc ? ` · ${x.locationDesc}` : ''}</span>
                       </button>
                       <button className="shrink-0 opacity-50 hover:opacity-100 hover:text-red-500" title="删除该实例" onClick={() => removeInstance(x.id)}>
                         <Trash2 className="w-3.5 h-3.5" />
@@ -426,7 +428,7 @@ function InspectInner({ task, point, onExit }: { task: Task; point: Point; onExi
                             : 'border-slate-200 bg-white'}`}>
                           <span className={`absolute top-2 right-2 text-[10px] font-semibold rounded px-1.5 py-0.5 ${lb.cls}`}>{lb.text}</span>
                           <Icon className={`w-7 h-7 ${n > 0 ? 'text-teal-700' : row.level === 'M' ? 'text-red-400' : 'text-slate-400'}`} />
-                          <p className="font-medium text-sm mt-1.5 pr-10">{facilityName(row.facility)}</p>
+                          <p className="font-medium text-sm mt-1.5 pr-10">{fname(row.facility)}</p>
                           <p className="text-[11px] text-slate-400">{row.facility === 'other' ? '自定义条款 · 现场录入' : `${row.items.length} 个检查点`}{row.condition ? ` · 条件：${row.condition}` : ''}</p>
                           <p className="text-[11px] mt-1.5 h-4">
                             {n > 0
@@ -455,7 +457,7 @@ function InspectInner({ task, point, onExit }: { task: Task; point: Point; onExi
                 <CardHeader className="py-3">
                   <CardTitle className="text-base flex items-center gap-2">
                     <span className={`font-bold ${LEVEL_META[curRow.level].tone}`}>{LEVEL_META[curRow.level].symbol}</span>
-                    {facilityName(curIns.facility)} · 实例 {String(curIns.no).padStart(2, '0')}
+                    {fname(curIns.facility)} · 实例 {String(curIns.no).padStart(2, '0')}
                     <Badge variant="secondary" className="text-[11px]">{LEVEL_META[curRow.level].label}</Badge>
                     <span className="text-xs font-normal text-slate-400">{curRow.items.length} 个检查点</span>
                   </CardTitle>
@@ -604,7 +606,7 @@ function InspectInner({ task, point, onExit }: { task: Task; point: Point; onExi
                       <div key={row.facility} className="px-3 py-2 border-t text-xs flex gap-2 items-start">
                         <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${row.level === 'M' || triggered ? 'text-red-500' : 'text-slate-300'}`} />
                         <div className="flex-1">
-                          <p className="font-medium">缺少{row.level === 'M' ? '必须设置的' : '条件设置的'}{facilityName(row.facility)}
+                          <p className="font-medium">缺少{row.level === 'M' ? '必须设置的' : '条件设置的'}{fname(row.facility)}
                             <Badge variant="secondary" className="ml-1 text-[10px]">{LEVEL_META[row.level].label}</Badge></p>
                           <p className="text-slate-500 mt-0.5">{row.typeNote ?? row.items[0]?.requirement}（{row.typeClause ?? row.items[0]?.clause}）</p>
                           {row.level === 'M'
@@ -632,7 +634,7 @@ function InspectInner({ task, point, onExit }: { task: Task; point: Point; onExi
                     <div key={i} className="px-3 py-2 border-t text-xs flex gap-2 items-start">
                       <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-medium">{facilityName(ins.facility)} · {item.aspect} · 实例{String(ins.no).padStart(2, '0')}{ins.locationDesc ? `（${ins.locationDesc}）` : ''}
+                        <p className="font-medium">{fname(ins.facility)} · {item.aspect} · 实例{String(ins.no).padStart(2, '0')}{ins.locationDesc ? `（${ins.locationDesc}）` : ''}
                           <Badge variant="secondary" className="ml-1 text-[10px]">{LEVEL_META[item.level].label}</Badge></p>
                         <p className="text-slate-500 mt-0.5">{item.requirement}（{item.clause}）{ins.checks[item.key]?.measured ? `｜实测：${ins.checks[item.key]!.measured}` : ''}</p>
                       </div>

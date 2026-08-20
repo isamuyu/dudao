@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { useCreateOrg, useOrgs, useReseed } from '@/api/hooks'
+import { useCreateOrg, useCreateUser, useOrgs, useUpdateOrg, useUpdateUser, useUsers } from '@/api/hooks'
+import type { Org } from '@/api/types'
 import { Pager, usePager } from '@/components/Pager'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Building2, MapPin, Plus, RotateCcw } from 'lucide-react'
+import { Building2, ChevronDown, ChevronRight, KeyRound, MapPin, Plus, UserRound } from 'lucide-react'
 import regionsJson from '@/data/china-regions.json'
 
 /** 全国行政区划（省 → 地级市 → 区县），含中心点与区域范围（GCJ-02，来源：DataV GeoAtlas） */
@@ -21,7 +22,6 @@ export default function PlatformPage() {
   const { data: orgs = [], isLoading } = useOrgs()
   const orgsPg = usePager(orgs, 8)
   const createOrg = useCreateOrg()
-  const reseed = useReseed()
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({ name: '', orgType: '', prov: '', city: '', district: '', adminName: '', adminPhone: '', adminPassword: '' })
 
@@ -56,16 +56,6 @@ export default function PlatformPage() {
     }
   }
 
-  const doReseed = async () => {
-    if (!confirm('重置为演示初始数据？全部业务数据将被清空并重新种子化。')) return
-    try {
-      await reseed.mutateAsync()
-      toast.success('已重置为演示初始数据')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : '重置失败')
-    }
-  }
-
   return (
     <div className="h-full overflow-auto bg-slate-50">
       <div className="max-w-4xl mx-auto p-6 space-y-4">
@@ -75,9 +65,6 @@ export default function PlatformPage() {
             <span className="text-xs font-normal text-slate-400">组织（租户）管理 · 共 {orgs.length} 个组织</span>
           </h2>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={reseed.isPending} onClick={() => void doReseed()}>
-              <RotateCcw className="w-4 h-4 mr-1" />重置演示数据
-            </Button>
             <Button size="sm" variant={creating ? 'secondary' : 'default'} onClick={() => setCreating(!creating)}>
               <Plus className="w-4 h-4 mr-1" />{creating ? '取消' : '新增组织'}
             </Button>
@@ -125,27 +112,128 @@ export default function PlatformPage() {
 
         <div className="space-y-2">
           {orgsPg.pageItems.map(o => (
-            <Card key={o.id}>
-              <CardContent className="py-3 px-4 flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm truncate">{o.name}</span>
-                    <Badge variant="secondary" className="text-[11px]">{o.orgType}</Badge>
-                    {o.status === 'disabled'
-                      ? <Badge variant="outline" className="text-[11px] text-slate-400">已停用</Badge>
-                      : <Badge variant="outline" className="text-[11px] text-green-600 border-green-300">启用中</Badge>}
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    督导区域：{o.regionName} · 中心 {o.center[0]}, {o.center[1]} · ID：{o.id}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            <OrgCard key={o.id} org={o} />
           ))}
           {!isLoading && orgs.length === 0 && <p className="text-sm text-slate-400">暂无组织</p>}
           <Pager page={orgsPg.page} totalPages={orgsPg.totalPages} total={orgsPg.total} onChange={orgsPg.setPage} />
         </div>
       </div>
+    </div>
+  )
+}
+
+/** 组织卡片：停用/启用 + 组织管理员管理（设置/修改/重置密码） */
+function OrgCard({ org: o }: { org: Org }) {
+  const updateOrg = useUpdateOrg()
+  const [expanded, setExpanded] = useState(false)
+
+  const toggleStatus = async () => {
+    const to = o.status === 'disabled' ? 'active' : 'disabled'
+    if (to === 'disabled' && !confirm(`停用「${o.name}」？停用后该组织所有账号将无法登录。`)) return
+    try {
+      await updateOrg.mutateAsync({ id: o.id, status: to })
+      toast.success(to === 'disabled' ? '组织已停用' : '组织已启用')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '操作失败')
+    }
+  }
+
+  return (
+    <Card className={o.status === 'disabled' ? 'opacity-70' : ''}>
+      <CardContent className="py-3 px-4 space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-sm truncate">{o.name}</span>
+              <Badge variant="secondary" className="text-[11px]">{o.orgType}</Badge>
+              {o.status === 'disabled'
+                ? <Badge variant="outline" className="text-[11px] text-slate-400">已停用</Badge>
+                : <Badge variant="outline" className="text-[11px] text-green-600 border-green-300">启用中</Badge>}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              督导区域：{o.regionName} · 中心 {o.center[0]}, {o.center[1]} · ID：{o.id}
+            </p>
+          </div>
+          <Button size="sm" variant="outline" className="shrink-0 h-8 text-xs" onClick={() => setExpanded(!expanded)}>
+            {expanded ? <ChevronDown className="w-3.5 h-3.5 mr-1" /> : <ChevronRight className="w-3.5 h-3.5 mr-1" />}管理员管理
+          </Button>
+          <Button size="sm" variant={o.status === 'disabled' ? 'default' : 'outline'} className="shrink-0 h-8 text-xs"
+            disabled={updateOrg.isPending} onClick={() => void toggleStatus()}>
+            {o.status === 'disabled' ? '启用组织' : '停用组织'}
+          </Button>
+        </div>
+        {expanded && <OrgAdminPanel org={o} />}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** 组织管理员管理面板：成员列表（设为/取消管理员、停用/启用、重置密码）+ 新增管理员 */
+function OrgAdminPanel({ org }: { org: Org }) {
+  const { data: users = [] } = useUsers(org.id)
+  const updateUser = useUpdateUser()
+  const createUser = useCreateUser()
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ name: '', phone: '', password: '' })
+
+  const act = async (body: Parameters<typeof updateUser.mutateAsync>[0], okMsg: string) => {
+    try {
+      await updateUser.mutateAsync(body)
+      toast.success(okMsg)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '操作失败')
+    }
+  }
+
+  const addAdmin = async () => {
+    if (!form.name.trim() || !/^1\d{10}$/.test(form.phone.trim())) { toast.error('请填写姓名与正确的手机号'); return }
+    try {
+      await createUser.mutateAsync({ name: form.name.trim(), phone: form.phone.trim(), role: 'admin', orgId: org.id, ...(form.password.trim() && { password: form.password.trim() }) })
+      toast.success(`管理员已添加（初始密码 ${form.password.trim() || '123456'}）`)
+      setAdding(false)
+      setForm({ name: '', phone: '', password: '' })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '添加失败')
+    }
+  }
+
+  return (
+    <div className="border-t pt-2 space-y-1.5">
+      <p className="text-xs font-medium text-slate-600 flex items-center gap-1"><UserRound className="w-3.5 h-3.5" />组织成员（{users.length}）</p>
+      {users.map(u => (
+        <div key={u.id} className="flex items-center gap-2 text-xs border rounded px-2 py-1.5 bg-white flex-wrap">
+          <span className="font-medium">{u.name}</span>
+          <span className="font-mono text-slate-400">{u.phone}</span>
+          <Badge variant="secondary" className="text-[10px]">{u.role === 'admin' ? '管理员' : '督导员'}</Badge>
+          {u.status === 'disabled' && <Badge variant="outline" className="text-[10px] text-slate-400">已停用</Badge>}
+          <span className="flex-1" />
+          <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2"
+            onClick={() => void act({ id: u.id, role: u.role === 'admin' ? 'inspector' : 'admin' }, u.role === 'admin' ? '已降为督导员' : '已设为管理员')}>
+            {u.role === 'admin' ? '降为督导员' : '设为管理员'}
+          </Button>
+          <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2"
+            onClick={() => { if (confirm(`将 ${u.name} 的密码重置为 123456？`)) void act({ id: u.id, password: '123456' }, '密码已重置为 123456') }}>
+            <KeyRound className="w-3 h-3 mr-0.5" />重置密码
+          </Button>
+          <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2"
+            onClick={() => void act({ id: u.id, status: u.status === 'active' ? 'disabled' : 'active' }, u.status === 'active' ? '账号已停用' : '账号已启用')}>
+            {u.status === 'active' ? '停用' : '启用'}
+          </Button>
+        </div>
+      ))}
+      {adding ? (
+        <div className="flex items-center gap-2 flex-wrap border border-teal-200 rounded px-2 py-2 bg-teal-50/50">
+          <Input className="w-32 h-8 text-xs" placeholder="姓名 *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+          <Input className="w-40 h-8 text-xs" placeholder="手机号（登录账号）*" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
+          <Input className="w-36 h-8 text-xs" placeholder="初始密码（默认123456）" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+          <Button size="sm" className="h-8 text-xs" disabled={createUser.isPending} onClick={() => void addAdmin()}>确认添加</Button>
+          <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setAdding(false)}>取消</Button>
+        </div>
+      ) : (
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setAdding(true)}>
+          <Plus className="w-3.5 h-3.5 mr-1" />新增管理员
+        </Button>
+      )}
     </div>
   )
 }

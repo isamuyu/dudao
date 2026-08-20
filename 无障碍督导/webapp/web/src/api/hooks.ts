@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPatch, apiPost } from './client'
+import type { ChecklibPayload } from '@/data/checklib'
 import type {
   Campaign,
+  CheckProfile,
   Inspection,
   Issue,
   IssueStatus,
@@ -45,6 +47,26 @@ export const useUsers = (orgId?: string) =>
 export const useCampaigns = () =>
   useQuery({ queryKey: QK.campaigns, queryFn: () => apiGet<Campaign[]>('/campaigns') })
 
+/** 检查项配置版本列表（不含 payload） */
+export const useCheckProfiles = () =>
+  useQuery({ queryKey: ['checkProfiles'] as const, queryFn: () => apiGet<CheckProfile[]>('/check-profiles') })
+
+/** 检查项配置详情（含完整 payload） */
+export const useCheckProfile = (id: string | null | undefined) =>
+  useQuery({
+    queryKey: ['checkProfiles', id ?? ''] as const,
+    queryFn: () => apiGet<CheckProfile>(`/check-profiles/${id}`),
+    enabled: !!id,
+  })
+
+/** 点位所属行动选用的检查项配置载荷（未加载完成时返回 undefined → 前端回退内置库） */
+export const usePointLib = (point?: { campaignId?: string | null }) => {
+  const { data: campaigns = [] } = useCampaigns()
+  const profileId = campaigns.find(c => c.id === point?.campaignId)?.profileId ?? 'prof-quick'
+  const { data: profile } = useCheckProfile(profileId)
+  return profile?.payload as ChecklibPayload | undefined
+}
+
 export const usePoints = (campaignId?: string) =>
   useQuery({ queryKey: [...QK.points, campaignId ?? ''], queryFn: () => apiGet<Point[]>(`/points${campaignId ? `?campaignId=${campaignId}` : ''}`) })
 
@@ -78,7 +100,7 @@ export const useLogin = () =>
 export const useCreateCampaign = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { name: string; regionDesc?: string; bounds?: [[number, number], [number, number]] }) =>
+    mutationFn: (body: { name: string; regionDesc?: string; bounds?: [[number, number], [number, number]]; profileId?: string }) =>
       apiPost<Campaign>('/campaigns', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK.campaigns }),
   })
@@ -217,9 +239,22 @@ export const useAdvanceIssue = () => {
 export const useCreateUser = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { name: string; phone: string; role: Extract<Role, 'admin' | 'inspector'>; password?: string }) =>
+    mutationFn: (body: { name: string; phone: string; role: Extract<Role, 'admin' | 'inspector'>; password?: string; orgId?: string }) =>
       apiPost<User>('/users', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK.users }),
+  })
+}
+
+/** 用户自助：修改本人姓名/手机号/密码 */
+export const useSelfPatch = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { name?: string; phone?: string; oldPassword?: string; newPassword?: string }) =>
+      apiPatch<User>('/users/me', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.me })
+      qc.invalidateQueries({ queryKey: QK.users })
+    },
   })
 }
 

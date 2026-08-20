@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { TDT_VEC, TDT_CVA, TDT_SUBDOMAINS } from '@/config'
 import { inRegion, inBounds, distM, POINT_STATUS_META } from '@/store/app'
 import { useAuth } from '@/auth/AuthContext'
-import { useCampaigns, useCreateCampaign, useCreatePoint, useIssues, usePoints } from '@/api/hooks'
+import { useCampaigns, useCheckProfiles, useCreateCampaign, useCreatePoint, useIssues, usePoints } from '@/api/hooks'
 import { reverseGeocode, searchNearby, type NearbyPoi } from '@/api/geocode'
 import { BUILDING_GROUPS, BUILDING_SUBTYPES, SUBTYPE_MAP, MATRIX, FACILITIES, LEVEL_META } from '@/data/checklib'
 import { Pager, usePager } from '@/components/Pager'
@@ -46,7 +46,8 @@ export default function MapPage() {
   const [corners, setCorners] = useState<LatLng[]>([])      // 行动区域两角
   const [roadPts, setRoadPts] = useState<LatLng[]>([])      // 道路起终点
   const [picked, setPicked] = useState<LatLng | null>(null) // 建筑点位
-  const [cForm, setCForm] = useState({ name: '', regionDesc: '' })
+  const [cForm, setCForm] = useState({ name: '', regionDesc: '', profileId: 'prof-quick' })
+  const { data: checkProfiles = [] } = useCheckProfiles()
   const [creatingCampaign, setCreatingCampaign] = useState(false)
   const defaultDeadline = () => new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString().slice(0, 10)
   const [bForm, setBForm] = useState({ name: '', address: '', group: 'office', subtype: 'gov', nature: '既有', owner: '', contact: '', publish: true, deadline: defaultDeadline() })
@@ -104,6 +105,7 @@ export default function MapPage() {
       await createCampaign.mutateAsync({
         name: cForm.name.trim(),
         regionDesc: cForm.regionDesc,
+        profileId: cForm.profileId,   // 检查项配置版本
         ...(corners.length === 2 && { bounds: toBounds(corners) }),   // 大致范围可选
       })
       toast.success('督导行动已创建')
@@ -191,6 +193,12 @@ export default function MapPage() {
             <div className="mb-2 p-2.5 rounded-md bg-teal-50/70 border border-teal-200 space-y-2 text-sm">
               <Input placeholder="行动名称 *（如：XX片区秋季无障碍督导行动）" value={cForm.name} onChange={e => setCForm({ ...cForm, name: e.target.value })} />
               <Input placeholder="区域描述（如：文二路—曙光路片区）" value={cForm.regionDesc} onChange={e => setCForm({ ...cForm, regionDesc: e.target.value })} />
+              <label className="block space-y-1">
+                <span className="text-xs text-slate-500">检查项配置（本行动各点位核查表由此生成）</span>
+                <select className={selCls} value={cForm.profileId} onChange={e => setCForm({ ...cForm, profileId: e.target.value })}>
+                  {checkProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
               <Button size="sm" variant={mode === 'region' ? 'default' : 'outline'} className="w-full h-8 text-xs"
                 onClick={() => { setMode(mode === 'region' ? null : 'region'); setCorners([]) }}>
                 <MapPin className="w-3.5 h-3.5 mr-1" />
@@ -213,6 +221,7 @@ export default function MapPage() {
                     <Badge variant="secondary" className="text-[10px] shrink-0">{c.status === 'active' ? '进行中' : '已结束'}</Badge>
                   </div>
                   <p className="text-slate-500 mt-0.5">{c.regionDesc || '未填区域描述'} · 对象 {objs.length} 个{open > 0 && <span className="text-red-500"> · 待闭环问题 {open}</span>}</p>
+                  <p className="text-slate-400 mt-0.5 text-[11px]">检查表：{checkProfiles.find(p => p.id === (c.profileId ?? 'prof-quick'))?.name ?? '督导员快速检查表'}</p>
                 </button>
               )
             })}

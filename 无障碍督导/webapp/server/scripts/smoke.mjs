@@ -72,6 +72,10 @@ const lib = await api('GET', '/checklib', { token: T.hzAdmin });
 ok(lib.status === 200 && lib.data.version === '1.4', "checklib version='1.4'");
 ok(Array.isArray(lib.data.facilities) && lib.data.facilities.length === 14, 'checklib facilities=14');
 ok(lib.data.matrix && lib.data.aspects && lib.data.paramTable && lib.data.details, 'checklib 全字段序列化');
+const profs = await api('GET', '/check-profiles', { token: T.hzAdmin });
+ok(profs.status === 200 && profs.data.some((p) => p.id === 'prof-quick' && p.name === '督导员快速检查表'), '检查项配置含内置版本"督导员快速检查表"');
+const profDetail = await api('GET', '/check-profiles/prof-quick', { token: T.hzAdmin });
+ok(profDetail.status === 200 && profDetail.data.payload?.matrix && profDetail.data.description.length > 10, '配置详情含完整 payload 与配置说明');
 
 /** ---------------- 2. 租户隔离 ---------------- */
 section('租户隔离');
@@ -95,6 +99,12 @@ const campaign = await api('POST', '/campaigns', {
   body: { name: '冒烟测试督导行动', regionDesc: '黄龙片区', bounds: [[30.25, 120.1], [30.29, 120.14]] },
 });
 ok(campaign.status === 201 && campaign.data.id?.startsWith('c-'), `区域内创建行动成功（${campaign.data.id}）`);
+ok(campaign.data.profileId === 'prof-quick', '行动默认采用检查项配置"督导员快速检查表"');
+const badProfile = await api('POST', '/campaigns', {
+  token: T.hzAdmin,
+  body: { name: '错误配置行动', profileId: 'prof-none' },
+});
+ok(badProfile.status === 422, `不存在的检查项配置 422（实际 ${badProfile.status}）`);
 const cid = campaign.data.id;
 const noBoundsCampaign = await api('POST', '/campaigns', {
   token: T.hzAdmin,
@@ -188,6 +198,7 @@ const sub = await api('POST', '/inspections', {
   body: { taskId: tidA, mainInfo, instances, condTriggered: ['parking'] },
 });
 ok(sub.status === 201 && sub.data.inspection?.checklibVersion === '1.4', '提交检查记录成功');
+ok(sub.data.inspection?.profileId === 'prof-quick', '检查记录保存所用检查项配置 profileId');
 ok(Array.isArray(sub.data.inspection?.condTriggered) && sub.data.inspection.condTriggered.includes('parking'), '检查记录保存 condTriggered 确认结果');
 const gen = sub.data.issues ?? [];
 // square: M=entrance,ramp,passage,toilet; C=parking,blindpath,signage。entrance 有 1 实例；
@@ -373,6 +384,30 @@ const rDefer = await api('POST', `/issues/${openOne.id}/advance`, { token: T.hzA
 ok(rDefer.status === 201 && rDefer.data.status === 'deferred' && rDefer.data.history.at(-1).note === '纳入下一年度改造计划', 'open → deferred 暂不立案（含补充说明）');
 const rRefile = await api('POST', `/issues/${openOne.id}/advance`, { token: T.hzAdmin, body: { responsible: '广场物业', deadline: '2026-12-31' } });
 ok(rRefile.status === 201 && rRefile.data.status === 'assigned' && rRefile.data.responsible === '广场物业', 'deferred → assigned 补立案（写入责任单位/期限）');
+
+section('用户自助与组织/用户管理');
+const badOld = await api('PATCH', '/users/me', { token: T.hzInsp, body: { oldPassword: 'wrong', newPassword: '654321' } });
+ok(badOld.status === 401, `自助改密码：原密码错误 401（实际 ${badOld.status}）`);
+const selfPhone = await api('PATCH', '/users/me', { token: T.hzInsp, body: { phone: '13800000002' } });
+ok(selfPhone.status === 200 && selfPhone.data.phone === '13800000002', '自助修改手机号（同号幂等）');
+const selfPwd = await api('PATCH', '/users/me', { token: T.hzInsp, body: { oldPassword: '123456', newPassword: '654321' } });
+ok(selfPwd.status === 200, '自助修改密码成功');
+const loginNew = await api('POST', '/auth/login', { body: { phone: '13800000002', password: '654321' } });
+ok(loginNew.status === 201, '新密码可登录');
+await api('PATCH', '/users/me', { token: T.hzInsp, body: { oldPassword: '654321', newPassword: '123456' } });
+const resetByAdmin = await api('PATCH', '/users/u-hz-insp', { token: T.hzAdmin, body: { password: '123456' } });
+ok(resetByAdmin.status === 200, '组织管理员重置用户密码');
+const disOrg = await api('PATCH', '/orgs/org-cd', { token: T.platform, body: { status: 'disabled' } });
+ok(disOrg.status === 200 && disOrg.data.status === 'disabled', '平台停用组织');
+const loginDisabled = await api('POST', '/auth/login', { body: { phone: '13800000003', password: '123456' } });
+ok(loginDisabled.status === 401 && String(loginDisabled.data.message).includes('组织已停用'), '停用组织账号登录被拒（组织已停用）');
+await api('PATCH', '/orgs/org-cd', { token: T.platform, body: { status: 'active' } });
+const loginBack = await api('POST', '/auth/login', { body: { phone: '13800000003', password: '123456' } });
+ok(loginBack.status === 201, '组织启用后恢复登录');
+const newAdmin = await api('POST', '/users', { token: T.platform, body: { name: '测试管理员', phone: '13811111111', role: 'admin', orgId: 'org-cd' } });
+ok(newAdmin.status === 201 && newAdmin.data.role === 'admin' && newAdmin.data.orgId === 'org-cd', '平台为组织新增管理员');
+const demote = await api('PATCH', `/users/${newAdmin.data.id}`, { token: T.platform, body: { role: 'inspector' } });
+ok(demote.status === 200 && demote.data.role === 'inspector', '平台修改组织管理员（降级为督导员）');
 
 /** ---------------- 8. reseed ---------------- */
 section('platform_admin reseed 数据复原');

@@ -30,13 +30,17 @@ export class AuthService {
     if (user.status === 'disabled') {
       throw new UnauthorizedException('账号已停用');
     }
+    const org = await this.orgOf(user.orgId);
+    if (org && org.status === 'disabled') {
+      throw new UnauthorizedException('组织已停用，请联系平台管理员');
+    }
     const token = this.jwt.sign({
       sub: user.id,
       orgId: user.orgId,
       role: user.role,
       name: user.name,
     });
-    return { token, user: toPublicUser(user), org: await this.orgOf(user.orgId) };
+    return { token, user: toPublicUser(user), org };
   }
 
   async me(me: AuthUser) {

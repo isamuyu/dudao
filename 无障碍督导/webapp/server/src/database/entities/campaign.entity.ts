@@ -27,4 +27,8 @@ export class CampaignEntity {
 
   @Column('text', { default: 'active' })
   status: 'active' | 'done';
+
+  /** 检查项配置版本 id（check_profiles.id；空则按默认配置"督导员快速检查表"） */
+  @Column('text', { nullable: true })
+  profileId: string | null;
 }

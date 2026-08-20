@@ -15,7 +15,10 @@ import {
   IssueEntity,
   InspectionEntity,
   FileEntity,
+  CheckProfileEntity,
 } from '../database/entities';
+import { defaultLibPayload } from '../checklib/checklib';
+import { DEFAULT_PROFILE_ID } from '../modules/checklib/check-profiles.controller';
 
 const T0 = '2026-08-15T00:00:00.000Z';
 
@@ -38,7 +41,27 @@ export class SeedService implements OnApplicationBootstrap {
       this.logger.log('orgs 表为空，执行初始化种子…');
       await this.reseed();
       this.logger.log('种子完成');
+      return;
     }
+    // 兜底：存量库缺少内置检查项配置时补种（不清空业务数据）
+    const profiles = this.dataSource.getRepository(CheckProfileEntity);
+    if ((await profiles.count()) === 0) {
+      this.logger.log('补种内置检查项配置…');
+      await profiles.save(this.defaultProfile());
+    }
+  }
+
+  /** 内置检查项配置版本："督导员快速检查表"（内容为当前 checklib 快照） */
+  private defaultProfile(): Partial<CheckProfileEntity> {
+    return {
+      id: DEFAULT_PROFILE_ID,
+      name: '督导员快速检查表',
+      description:
+        '依据 GB 55019-2021《建筑与市政工程无障碍通用规范》（全文强制）、GB 50763-2012《无障碍设计规范》，整理自《各类建筑无障碍设施配置清单表格22》第二、三章。覆盖 31 类建筑/道路场所 × 14 类无障碍设施的配置矩阵（必须/条件/推荐）、各类型明细要求、55+ 检查点模板与 30 项关键技术参数速查，适用于常规现场快速督导。',
+      payload: defaultLibPayload(),
+      builtin: true,
+      createdAt: T0,
+    };
   }
 
   /** 清空全部业务数据并重新种子化（POST /admin/reseed 与启动自检共用） */
@@ -52,10 +75,13 @@ export class SeedService implements OnApplicationBootstrap {
       CampaignEntity,
       UserEntity,
       OrgEntity,
+      CheckProfileEntity,
     ];
     for (const t of tables) await this.dataSource.getRepository(t).clear();
 
     const hash = bcrypt.hashSync('123456', 10);
+
+    await this.dataSource.getRepository(CheckProfileEntity).save(this.defaultProfile());
 
     await this.dataSource.getRepository(OrgEntity).save([
       { id: 'org-hz', name: '杭州市西湖区无障碍督导队', orgType: '残联督导队', regionName: '杭州市西湖区', center: [30.245, 120.125], bounds: [[30.19, 120.05], [30.3, 120.2]], status: 'active', expiresAt: null },
@@ -71,9 +97,9 @@ export class SeedService implements OnApplicationBootstrap {
     ]);
 
     await this.dataSource.getRepository(CampaignEntity).save([
-      { id: 'c1', orgId: 'org-hz', name: '西湖区 2026 秋季无障碍专项督导行动', regionDesc: '文二西路—曙光路—天目山路片区', bounds: [[30.24, 120.06], [30.295, 120.15]], createdBy: '王敏', createdAt: '2026-08-15', status: 'active' },
-      { id: 'c2', orgId: 'org-hz', name: '交通枢纽无障碍督导行动', regionDesc: '地铁 2 号线沿线', bounds: [[30.27, 120.09], [30.3, 120.12]], createdBy: '王敏', createdAt: '2026-08-12', status: 'active' },
-      { id: 'c3', orgId: 'org-cd', name: '锦江区政务与医疗无障碍督导行动', regionDesc: '金石路—成龙大道片区', bounds: [[30.585, 104.085], [30.605, 104.12]], createdBy: '陈芳', createdAt: '2026-08-14', status: 'active' },
+      { id: 'c1', profileId: DEFAULT_PROFILE_ID, orgId: 'org-hz', name: '西湖区 2026 秋季无障碍专项督导行动', regionDesc: '文二西路—曙光路—天目山路片区', bounds: [[30.24, 120.06], [30.295, 120.15]], createdBy: '王敏', createdAt: '2026-08-15', status: 'active' },
+      { id: 'c2', profileId: DEFAULT_PROFILE_ID, orgId: 'org-hz', name: '交通枢纽无障碍督导行动', regionDesc: '地铁 2 号线沿线', bounds: [[30.27, 120.09], [30.3, 120.12]], createdBy: '王敏', createdAt: '2026-08-12', status: 'active' },
+      { id: 'c3', profileId: DEFAULT_PROFILE_ID, orgId: 'org-cd', name: '锦江区政务与医疗无障碍督导行动', regionDesc: '金石路—成龙大道片区', bounds: [[30.585, 104.085], [30.605, 104.12]], createdBy: '陈芳', createdAt: '2026-08-14', status: 'active' },
     ]);
 
     const pt = (p: Partial<PointEntity> & { id: string }): PointEntity =>

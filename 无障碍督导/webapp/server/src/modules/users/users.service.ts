@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  UnauthorizedException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,7 +10,7 @@ import * as bcrypt from 'bcryptjs';
 import { UserEntity, toPublicUser } from '../../database/entities';
 import { AuthUser } from '../../common/decorators';
 import { uid } from '../../common/geo';
-import { CreateUserDto, PatchUserDto } from './dto';
+import { CreateUserDto, PatchUserDto, SelfPatchDto } from './dto';
 
 @Injectable()
 export class UsersService {
@@ -63,6 +64,31 @@ export class UsersService {
     if (dto.certExpiresAt !== undefined) target.certExpiresAt = dto.certExpiresAt;
     if (dto.password !== undefined)
       target.passwordHash = bcrypt.hashSync(dto.password, 10);
+    return toPublicUser(await this.users.save(target));
+  }
+
+  /** 用户自助修改（本人）：姓名/手机号/密码（改密码需校验旧密码） */
+  async selfPatch(user: AuthUser, dto: SelfPatchDto) {
+    const target = await this.users.findOne({ where: { id: user.id } });
+    if (!target) throw new NotFoundException('用户不存在');
+    if (dto.name !== undefined) {
+      if (!dto.name.trim()) throw new UnprocessableEntityException('姓名不能为空');
+      target.name = dto.name.trim();
+    }
+    if (dto.phone !== undefined) {
+      if (!/^1\d{10}$/.test(dto.phone.trim()))
+        throw new UnprocessableEntityException('手机号格式不正确');
+      const exists = await this.users.findOne({ where: { phone: dto.phone.trim() } });
+      if (exists && exists.id !== target.id)
+        throw new UnprocessableEntityException('该手机号已被注册');
+      target.phone = dto.phone.trim();
+    }
+    if (dto.newPassword !== undefined) {
+      if (!dto.oldPassword || !bcrypt.compareSync(dto.oldPassword, target.passwordHash)) {
+        throw new UnauthorizedException('原密码错误');
+      }
+      target.passwordHash = bcrypt.hashSync(dto.newPassword, 10);
+    }
     return toPublicUser(await this.users.save(target));
   }
 }

@@ -11,6 +11,7 @@ import LibPage from '@/pages/LibPage'
 import LoginPage from '@/pages/LoginPage'
 import UsersPage from '@/pages/UsersPage'
 import PlatformPage from '@/pages/PlatformPage'
+import ProfileDialog from '@/components/ProfileDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Accessibility, Map as MapIcon, ClipboardList, AlertTriangle, BarChart3, BookOpen, Building2, Loader2, LogOut, Users, Globe } from 'lucide-react'
@@ -33,6 +34,7 @@ function Shell() {
   const { user, org, logout } = useAuth()
   const [tab, setTab] = useState<string>('map')
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
   if (!user) return null
   const inspecting = activeTaskId != null
   const rm = ROLE_META[user.role]
@@ -60,10 +62,11 @@ function Shell() {
               <Globe className="w-3.5 h-3.5" />平台级账号（跨组织）
             </span>
           )}
-          <span className="text-xs bg-teal-700/60 rounded px-2 py-1 whitespace-nowrap flex items-center gap-1.5">
+          <button className="text-xs bg-teal-700/60 rounded px-2 py-1 whitespace-nowrap flex items-center gap-1.5 hover:bg-teal-700 cursor-pointer" title="个人中心（修改资料/密码）"
+            onClick={() => setProfileOpen(true)}>
             {user.name}
             <Badge className={rm.cls + ' text-[10px] px-1.5 py-0'}>{rm.label}</Badge>
-          </span>
+          </button>
           <Button size="sm" variant="ghost" className="text-white/70 hover:text-white hover:bg-teal-700 h-7 text-xs"
             onClick={() => { window.location.hash = '#/m' }}>
             移动版
@@ -108,6 +111,7 @@ function Shell() {
           : tab === 'platform' && user.role === 'platform_admin' ? <PlatformPage />
           : <LibPage />}
       </main>
+      <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   )
 }
