@@ -1,0 +1,87 @@
+# 无障碍督导系统 — 正式版全栈部署（本地/Docker）
+# 用法：docker compose up --build
+#   web:    http://localhost:8080
+#   api:    http://localhost:3000/api
+#   minio:  http://localhost:9001 (minioadmin / minioadmin123)
+# 本地无 Docker 开发方式见 README.md（SQLite + 本地文件存储，零依赖）。
+
+services:
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    environment:
+      POSTGRES_DB: dudao
+      POSTGRES_USER: dudao
+      POSTGRES_PASSWORD: dudao123
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dudao"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin123;
+      mc mb -p local/dudao-files || true;
+      mc anonymous set none local/dudao-files || true;
+      "
+
+  server:
+    build: ./server
+    depends_on:
+      db:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      PORT: 3000
+      DB_TYPE: postgres
+      PG_HOST: db
+      PG_PORT: 5432
+      PG_USER: dudao
+      PG_PASSWORD: dudao123
+      PG_DB: dudao
+      JWT_SECRET: change-me-in-production
+      STORAGE_DRIVER: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: dudao-files
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin123
+      S3_FORCE_PATH_STYLE: "true"
+    ports:
+      - "3000:3000"
+
+  web:
+    build: ./web
+    depends_on:
+      - server
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:
+  miniodata:
